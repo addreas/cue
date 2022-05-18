@@ -233,6 +233,16 @@ func (v *ValueError) AddClosedPositions(c CloseInfo) {
 	}
 }
 
+// A ValueError is returned as a result of evaluating a value.
+type ConflictError struct {
+	r   Runtime
+	v   *Vertex
+	v1  Node
+	v2  Node
+	ids []CloseInfo
+	errors.Message
+}
+
 func (c *OpContext) errNode() *Vertex {
 	return c.vertex
 }
@@ -314,6 +324,38 @@ func (e *ValueError) InputPositions() (a []token.Pos) {
 }
 
 func (e *ValueError) Path() (a []string) {
+	if e.v == nil {
+		return nil
+	}
+	for _, f := range appendPath(nil, e.v) {
+		a = append(a, f.SelectorString(e.r))
+	}
+	return a
+}
+
+func (e *ConflictError) Error() string {
+	return errors.String(e)
+}
+
+func (e *ConflictError) Position() token.Pos {
+	return token.NoPos
+}
+
+func (e *ConflictError) InputPositions() (a []token.Pos) {
+	a = make([]token.Pos, 2, len(e.ids)+2)
+	a[0] = pos(e.v1)
+	a[1] = pos(e.v2)
+	for _, c := range e.ids {
+		for s := c.closeInfo; s != nil; s = s.parent {
+			if loc := s.location; loc != nil {
+				a = appendNodePositions(a, loc)
+			}
+		}
+	}
+	return
+}
+
+func (e *ConflictError) Path() (a []string) {
 	if e.v == nil {
 		return nil
 	}
