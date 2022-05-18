@@ -204,10 +204,10 @@ func CombineErrors(src ast.Node, x, y Value) *Bottom {
 
 // A ValueError is returned as a result of evaluating a value.
 type ValueError struct {
-	r      Runtime
-	v      *Vertex
-	pos    token.Pos
-	auxpos []token.Pos
+	r         Runtime
+	v         *Vertex
+	pos       token.Pos
+	positions []Node
 	errors.Message
 }
 
@@ -216,12 +216,12 @@ func (v *ValueError) AddPosition(n Node) {
 		return
 	}
 	if p := pos(n); p != token.NoPos {
-		for _, q := range v.auxpos {
-			if p == q {
+		for _, q := range v.positions {
+			if p == pos(q) {
 				return
 			}
 		}
-		v.auxpos = append(v.auxpos, p)
+		v.positions = append(v.positions, n)
 	}
 }
 
@@ -280,33 +280,53 @@ func appendNodePositions(a []token.Pos, n Node) []token.Pos {
 }
 
 func (c *OpContext) NewPosf(p token.Pos, format string, args ...interface{}) *ValueError {
-	var a []token.Pos
-	if len(c.positions) > 0 {
-		a = make([]token.Pos, 0, len(c.positions))
-		for _, n := range c.positions {
-			a = appendNodePositions(a, n)
-		}
-	}
+	ps := c.positions
+
 	for i, arg := range args {
 		switch x := arg.(type) {
 		case Node:
-			a = appendNodePositions(a, x)
+			ps = append(ps, x)
 			args[i] = c.Str(x)
 		case ast.Node:
 			b, _ := cueformat.Node(x)
-			if p := x.Pos(); p != token.NoPos {
-				a = append(a, p)
-			}
+			// if p := x.Pos(); p != token.NoPos {
+			// 	a = append(a, p)
+			// }
 			args[i] = string(b)
 		case Feature:
 			args[i] = x.SelectorString(c.Runtime)
 		}
 	}
 	return &ValueError{
+		r:         c.Runtime,
+		v:         c.errNode(),
+		pos:       p,
+		positions: ps,
+		Message:   errors.NewMessage(format, args),
+	}
+}
+
+func (c *OpContext) NewConflictf(v1, v2 Node, ids []CloseInfo, format string, args ...interface{}) *ConflictError {
+	args = append([]interface{}{v1, v2}, args...)
+
+	for i, arg := range args {
+		switch x := arg.(type) {
+		case Node:
+			args[i] = c.Str(x)
+		case ast.Node:
+			b, _ := cueformat.Node(x)
+			args[i] = string(b)
+		case Feature:
+			args[i] = x.SelectorString(c.Runtime)
+		}
+	}
+
+	return &ConflictError{
 		r:       c.Runtime,
 		v:       c.errNode(),
-		pos:     p,
-		auxpos:  a,
+		v1:      v2,
+		v2:      v2,
+		ids:     ids,
 		Message: errors.NewMessage(format, args),
 	}
 }
@@ -320,7 +340,11 @@ func (e *ValueError) Position() token.Pos {
 }
 
 func (e *ValueError) InputPositions() (a []token.Pos) {
-	return e.auxpos
+	a = make([]token.Pos, 0, len(e.positions))
+	for _, n := range e.positions {
+		a = appendNodePositions(a, n)
+	}
+	return a
 }
 
 func (e *ValueError) Path() (a []string) {

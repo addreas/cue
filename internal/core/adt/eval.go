@@ -1124,23 +1124,16 @@ func (n *nodeContext) reportConflict(
 
 	ctx := n.ctx
 
-	var err errors.Message
+	var err errors.Error
 	if k1 == k2 {
-		err = errors.NewMessage("conflicting values %s and %s", []interface{}{ctx.Str(v1), ctx.Str(v2)})
+		err = ctx.NewConflictf(v1, v2, ids, "conflicting values %s and %s")
 	} else {
-		err = errors.NewMessage(
+		err = ctx.NewConflictf(v1, v2, ids,
 			"conflicting values %s and %s (mismatched types %s and %s)",
-			[]interface{}{ctx.Str(v1), ctx.Str(v2), k1.String(), k2.String()})
+			k1, k2)
 	}
 
-	n.addErr(&ConflictError{
-		r:       ctx.Runtime,
-		v:       ctx.vertex,
-		v1:      v1,
-		v2:      v2,
-		ids:     ids,
-		Message: err,
-	})
+	n.addErr(err)
 }
 
 // reportFieldMismatch reports the mixture of regular fields with non-struct
